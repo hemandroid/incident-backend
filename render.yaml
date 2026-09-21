@@ -1,0 +1,51 @@
+# Render Blueprint. New > Blueprint in the dashboard, point it at this repo,
+# and Render prompts for every value marked `sync: false`.
+#
+# Free-plan caveats that bite a live demo, in order of severity:
+#   - A free service spins down after 15 minutes with no inbound traffic and
+#     takes about a minute to come back. Hit /health before you present.
+#   - Free services get no persistent disk, so DEDUPE_PATH resets on every
+#     spin-down and restart. Worst case is a duplicate ticket.
+#   - Render may restart a free service at any time.
+services:
+  - type: web
+    name: incident-backend
+    runtime: docker
+    # If Render rejects this, remove the line and pick Free in the dashboard.
+    plan: free
+    # Closest region to India. Oregon is the default.
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      # Render injects PORT; config.dart reads it. Do not set it here.
+      - key: JIRA_BASE_URL
+        sync: false
+      - key: JIRA_EMAIL
+        sync: false
+      - key: JIRA_API_TOKEN
+        sync: false
+      - key: JIRA_PROJECT_KEY
+        sync: false
+      - key: JIRA_CLOUD_ID
+        sync: false
+      - key: JIRA_API_BASE
+        value: https://api.atlassian.com/ex/jira
+      - key: JIRA_ISSUE_TYPE
+        value: Bug
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_CHANNEL_ID
+        sync: false
+      - key: SLACK_DM_USER_ID
+        sync: false
+      - key: AI_ENDPOINT
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        sync: false
+      - key: AI_AUTH_HEADER
+        value: Authorization
+      - key: INGEST_APP_TOKEN
+        sync: false

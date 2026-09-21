@@ -1,0 +1,16 @@
+# Dart
+.dart_tool/
+.packages
+build/
+
+# Secrets. Only .env.example is ever committed.
+.env
+.env.*
+!.env.example
+
+# Runtime state, not source.
+.incident-dedupe.json
+*.incident-dedupe.json
+
+# macOS
+.DS_Store

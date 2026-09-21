@@ -1,0 +1,7 @@
+.dart_tool/
+build/
+test/
+.env
+.env.*
+.git/
+*.json
