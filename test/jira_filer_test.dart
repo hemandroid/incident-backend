@@ -165,6 +165,53 @@ void main() {
       );
     });
 
+    test('the last five network requests reach the ticket, failures included',
+        () async {
+      Map<String, dynamic>? sentBody;
+      final client = MockClient((request) async {
+        sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(jsonEncode({'key': 'SCRUM-15'}), 201);
+      });
+      final filer = JiraFiler(
+        apiRoot: 'https://api.atlassian.com/ex/jira/cloud-1/rest/api/3',
+        authHeader: _fakeAuthHeader,
+        projectKey: 'SCRUM',
+        issueTypeName: 'Bug',
+        siteBaseUrl: 'https://acme.atlassian.net',
+        client: client,
+        log: (_) {},
+      );
+
+      await filer.file(_incident(context: {
+        'network': {
+          'requests': [
+            for (var i = 1; i <= 6; i++)
+              {
+                'method': 'GET',
+                'url': 'https://dummyjson.com/products/category/c$i',
+                'statusCode': 200,
+                'durationMs': 100 + i,
+              },
+            {
+              'method': 'GET',
+              'url': 'https://dummyjson.invalid/products',
+              'error': 'SocketException: Failed host lookup',
+              'durationMs': 12,
+            },
+          ],
+        },
+      }), null, 'trace');
+
+      final text = jsonEncode(((sentBody!['fields']
+          as Map<String, dynamic>)['description'] as Map)['content']);
+      expect(text,
+          contains('Network: GET https://dummyjson.com/products/category/c6 -> 200 in 106 ms'));
+      expect(text, contains('-> failed: SocketException: Failed host lookup in 12 ms'));
+      // Seven captured, five shown: the two oldest drop off.
+      expect(text, isNot(contains('category/c2 ')));
+      expect(text, isNot(contains('category/c1 ')));
+    });
+
     test('an Analysis with an empty root cause omits the Root cause section '
         'instead of sending an invalid ADF bulletList', () async {
       // contracts.dart permits Analysis.rootCause to be empty; an ADF
@@ -301,6 +348,12 @@ void main() {
       expect(blocks[0], contains('orders.singleWhere'));
       expect(blocks[1], contains('firstWhereOrNull'));
       expect(blocks[2], 'trace');
+      // The fix is Dart and Jira highlights it as such; the trace is not code.
+      final languages = content
+          .where((c) => c['type'] == 'codeBlock')
+          .map((c) => (c['attrs'] as Map?)?['language'])
+          .toList();
+      expect(languages, ['dart', 'dart', null]);
       final asText = jsonEncode(content);
       expect(asText, contains('Suggested fix'));
       expect(asText, contains('Handle multiple matches gracefully.'));

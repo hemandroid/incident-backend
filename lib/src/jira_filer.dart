@@ -38,6 +38,7 @@ class JiraFiler implements TicketFiler {
   /// Keeps the crash site and its immediate callers on screen without
   /// risking Jira's per-field payload size limit.
   static const int _maxTraceLines = 100;
+  static const int _maxNetworkLines = 5;
 
   Map<String, String> get _headers => {
         'Authorization': authHeader,
@@ -255,9 +256,9 @@ class JiraFiler implements TicketFiler {
         }
         if (hasDiff) {
           content.add(_paragraph('Before:'));
-          content.add(_codeBlock(analysis.codeBefore!));
+          content.add(_codeBlock(analysis.codeBefore!, language: 'dart'));
           content.add(_paragraph('After:'));
-          content.add(_codeBlock(analysis.codeAfter!));
+          content.add(_codeBlock(analysis.codeAfter!, language: 'dart'));
         }
       }
     } else {
@@ -303,6 +304,16 @@ class JiraFiler implements TicketFiler {
           ? rendered.sublist(rendered.length - 10)
           : rendered;
       lines.add('Recent routes: ${recent.join(' -> ')}');
+    }
+
+    // The last few only: the collector keeps 20, and the requests nearest the
+    // crash are the ones that explain it.
+    final requests = recentEntries(incident.context['network']);
+    final lastRequests = requests.length > _maxNetworkLines
+        ? requests.sublist(requests.length - _maxNetworkLines)
+        : requests;
+    for (final request in lastRequests) {
+      lines.add('Network: ${renderRequest(request)}');
     }
 
     return lines;
@@ -371,8 +382,11 @@ class JiraFiler implements TicketFiler {
         ],
       };
 
-  Map<String, dynamic> _codeBlock(String text) => {
+  /// [language] turns on Jira's syntax highlighting; left off for the stack
+  /// trace, which is not code.
+  Map<String, dynamic> _codeBlock(String text, {String? language}) => {
         'type': 'codeBlock',
+        if (language != null) 'attrs': {'language': language},
         'content': [
           {'type': 'text', 'text': text},
         ],

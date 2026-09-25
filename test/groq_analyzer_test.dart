@@ -356,6 +356,41 @@ void main() {
       expect(content, contains('[info] tapped checkout'));
     });
 
+    test('recent network requests reach the prompt', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return _chatResponse(_validJson);
+      });
+
+      await _analyzer(client).analyse(_incident(context: {
+        'network': {
+          'requests': [
+            for (var i = 1; i <= 6; i++)
+              {
+                'method': 'GET',
+                'url': 'https://dummyjson.com/products/category/c$i',
+                'statusCode': 200,
+                'durationMs': 100 + i,
+              },
+            {
+              'method': 'GET',
+              'url': 'https://dummyjson.invalid/products',
+              'error': 'SocketException: Failed host lookup',
+              'durationMs': 12,
+            },
+          ],
+        },
+      }), 'trace');
+
+      final body = jsonDecode(captured!.body) as Map<String, dynamic>;
+      final content = (body['messages'] as List).first['content'] as String;
+      expect(content, contains('NETWORK REQUESTS'));
+      expect(content, contains('GET https://dummyjson.com/products/category/c6 -> 200 in 106 ms'));
+      expect(content, contains('failed: SocketException: Failed host lookup'));
+      expect(content, isNot(contains('category/c1 ')));
+    });
+
     test('an oversized breadcrumb log is clamped, not sent to the model whole',
         () async {
       // 20 short-looking entries off a big ring buffer can still carry a

@@ -22,6 +22,15 @@ COPY symbols/ /symbols/
 VOLUME /symbols
 ENV SYMBOLS_DIR=/symbols
 
+# The app's source, so tickets carry real before/after code instead of a
+# described fix. It sits at the SAME absolute path the app was built from,
+# because a symbolicated frame names the build machine's path and
+# SourceReader only opens files inside SOURCE_DIR (a forged frame must not
+# read the server's own files). Re-copy `source/lib` whenever the app changes,
+# exactly like the symbols: stale source quotes the wrong lines.
+ENV SOURCE_DIR=/Users/hemasai/Mobile_Projects/Mobile_Projects/flutter_demos/rsod_demo
+COPY source/ /Users/hemasai/Mobile_Projects/Mobile_Projects/flutter_demos/rsod_demo/
+
 ENV DEDUPE_PATH=/state/dedupe.json
 VOLUME /state
 

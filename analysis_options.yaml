@@ -1,5 +1,11 @@
 include: package:lints/recommended.yaml
 
+# source/ is a copy of the Flutter app, read at runtime for before/after code;
+# it is not this package's code and cannot resolve Flutter imports here.
+analyzer:
+  exclude:
+    - source/**
+
 linter:
   rules:
     - avoid_print

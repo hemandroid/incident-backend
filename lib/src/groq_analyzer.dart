@@ -54,6 +54,7 @@ class GroqAnalyzer implements IncidentAnalyzer {
   static const int _maxStackTraceChars = 4000;
   static const int _maxRoutes = 15;
   static const int _maxBreadcrumbs = 20;
+  static const int _maxRequests = 5;
 
   // The entry count caps above bound how many breadcrumbs are kept, not how
   // long each one is — a 16KB log ring buffer spread over 20 short-looking
@@ -148,6 +149,15 @@ class GroqAnalyzer implements IncidentAnalyzer {
     final breadcrumbs = _recentTail(incident.context['logs'], _maxBreadcrumbs);
     final breadcrumbsText =
         _clamp(breadcrumbs.join('\n'), _maxBreadcrumbTextChars);
+    final requests = recentEntries(incident.context['network'])
+        .map(renderRequest)
+        .toList();
+    final lastRequests = requests.length > _maxRequests
+        ? requests.sublist(requests.length - _maxRequests)
+        : requests;
+    // Same bound as the breadcrumbs: a redacted URL can still be long.
+    final requestsText =
+        _clamp(lastRequests.join('\n'), _maxBreadcrumbTextChars);
 
     // Matched against the FULL trace, not the truncated `trace` above the
     // model actually sees — a source excerpt can therefore quote a frame
@@ -248,7 +258,11 @@ class GroqAnalyzer implements IncidentAnalyzer {
       ..writeln(routes.isEmpty ? 'none captured' : routes.join(' -> '))
       ..writeln()
       ..writeln('LOG BREADCRUMBS (most recent $_maxBreadcrumbs shown):')
-      ..writeln(breadcrumbs.isEmpty ? 'none captured' : breadcrumbsText);
+      ..writeln(breadcrumbs.isEmpty ? 'none captured' : breadcrumbsText)
+      ..writeln()
+      ..writeln('NETWORK REQUESTS (oldest to newest, most recent '
+          '$_maxRequests shown):')
+      ..writeln(lastRequests.isEmpty ? 'none captured' : requestsText);
 
     return buffer.toString();
   }
