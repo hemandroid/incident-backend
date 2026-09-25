@@ -35,6 +35,7 @@ GroqAnalyzer _analyzer(
   Duration timeout = const Duration(seconds: 5),
   String? apiVersion,
   SourceReader? sourceReader,
+  Log? log,
 }) =>
     GroqAnalyzer(
       endpoint: 'https://api.groq.com/openai/v1/chat/completions',
@@ -44,7 +45,7 @@ GroqAnalyzer _analyzer(
       apiVersion: apiVersion,
       timeout: timeout,
       client: client,
-      log: (_) {},
+      log: log ?? (_) {},
       sourceReader: sourceReader,
     );
 
@@ -533,6 +534,104 @@ void main() {
 
       expect(result!.codeBefore, isNull);
       expect(result.codeAfter, isNull);
+    });
+
+    test('the request names an output cap the free tier can actually grant', () async {
+      // With no max_tokens the provider reserves the model's full 16k output
+      // budget against a 1000 OTPM ceiling and 429s before the model runs.
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return _chatResponse(_validJson);
+      });
+
+      await _analyzer(client).analyse(_incident(), 'trace');
+
+      final body = jsonDecode(captured!.body) as Map<String, dynamic>;
+      expect(body['max_tokens'], isA<int>());
+      expect(body['max_tokens'] as int, lessThan(1000));
+      expect(body['max_tokens'] as int, greaterThan(500));
+    });
+
+    test('a paid tier can raise the output cap without a code change', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return _chatResponse(_validJson);
+      });
+
+      await GroqAnalyzer(
+        endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+        authHeaderName: 'Authorization',
+        authHeaderValue: 'Bearer test-secret-key',
+        model: 'qwen/qwen3.8-27b',
+        timeout: const Duration(seconds: 5),
+        client: client,
+        log: (_) {},
+        maxOutputTokens: 4096,
+      ).analyse(_incident(), 'trace');
+
+      expect((jsonDecode(captured!.body) as Map<String, dynamic>)['max_tokens'], 4096);
+    });
+
+    test('real newlines inside code_before parse, and the code keeps its line breaks',
+        () async {
+      // What a model actually returns once it fills code_before with source:
+      // literal newlines inside the string value, which jsonDecode rejects.
+      const rawNewlines = '{\n'
+          '  "title": "Duplicate order ids crash the list",\n'
+          '  "root_cause": ["Two orders share an id"],\n'
+          '  "severity": "major",\n'
+          '  "code_before": "final o = orders.singleWhere(\n  (x) => x.id == id,\n);",\n'
+          '  "code_after": "final o = orders.where(\n  (x) => x.id == id,\n).firstOrNull;"\n'
+          '}';
+      final client = MockClient((request) async => _chatResponse(rawNewlines));
+      final result = await _analyzer(client).analyse(_incident(), 'trace');
+
+      expect(result, isNotNull);
+      expect(result!.codeBefore, 'final o = orders.singleWhere(\n  (x) => x.id == id,\n);');
+      expect(result.codeAfter, 'final o = orders.where(\n  (x) => x.id == id,\n).firstOrNull;');
+    });
+
+    test('a raw tab inside a string survives as a tab, not as backslash-t', () async {
+      final client = MockClient(
+        (request) async => _chatResponse(
+          '{"title": "Tabbed", "root_cause": ["a\tb"], "severity": "minor"}',
+        ),
+      );
+      final result = await _analyzer(client).analyse(_incident(), 'trace');
+
+      expect(result!.rootCause, ['a\tb']);
+    });
+
+    test('an already-escaped \\n is not double-escaped', () async {
+      final client = MockClient((request) async => _chatResponse(jsonEncode({
+            'title': 'Escaped already',
+            'root_cause': ['Two orders share an id'],
+            'code_before': 'line one\nline two',
+            'code_after': 'line one\nline two fixed',
+          })));
+      final result = await _analyzer(client).analyse(_incident(), 'trace');
+
+      // jsonEncode already wrote the newline as the two characters \ and n; a
+      // naive global escape would turn those into a literal backslash-n.
+      expect(result!.codeBefore, 'line one\nline two');
+      expect(result.codeBefore, isNot(contains(r'\n')));
+    });
+
+    test('a reply that is still unparseable after escaping returns null and logs why',
+        () async {
+      final logs = <String>[];
+      // Balanced braces, so extraction succeeds and jsonDecode is the one to
+      // refuse it — the path the control-character repair feeds.
+      final client = MockClient(
+        (request) async => _chatResponse('{"title": "oops" "root_cause": ["x"]}'),
+      );
+
+      final result = await _analyzer(client, log: logs.add).analyse(_incident(), 'trace');
+
+      expect(result, isNull);
+      expect(logs.single, contains('not valid JSON'));
     });
 
     test('sends the auth header name/value and api-version query param as configured', () async {

@@ -23,7 +23,9 @@ class GroqAnalyzer implements IncidentAnalyzer {
     required http.Client client,
     required Log log,
     SourceReader? sourceReader,
+    int maxOutputTokens = _maxOutputTokens,
   })  : _sourceReader = sourceReader,
+        _outputTokenCap = maxOutputTokens,
         _endpoint = endpoint,
         _authHeaderName = authHeaderName,
         _authHeaderValue = authHeaderValue,
@@ -39,6 +41,7 @@ class GroqAnalyzer implements IncidentAnalyzer {
   final String _model;
   final String? _apiVersion;
   final Duration _timeout;
+  final int _outputTokenCap;
   final http.Client _client;
   final Log _log;
 
@@ -57,6 +60,16 @@ class GroqAnalyzer implements IncidentAnalyzer {
   // entries can still blow the prompt past a provider's request-size limit.
   // This caps the joined text itself, same as _maxStackTraceChars/_maxCodeChars.
   static const int _maxBreadcrumbTextChars = 4000;
+
+  // Groq reserves the model's whole output allowance (16k) against the free
+  // tier's 1000 output-tokens-per-minute ceiling and rejects the call with a
+  // 429 before the model runs, so the cap has to be stated. 900 is what the
+  // schema needs and no more: title, root_cause and repro_steps cost ~250
+  // tokens together, leaving room for both 3000-char code blocks to come back
+  // whole (see _maxCodeChars) rather than truncated mid-line. A paid tier
+  // lifts the OTPM ceiling, so this is a constructor parameter — raise it
+  // there, not here.
+  static const int _maxOutputTokens = 900;
 
   static const Set<String> _validSeverities = {'blocker', 'major', 'minor'};
 
@@ -77,6 +90,7 @@ class GroqAnalyzer implements IncidentAnalyzer {
               'messages': [
                 {'role': 'user', 'content': _buildPrompt(incident, symbolicatedTrace)},
               ],
+              'max_tokens': _outputTokenCap,
             }),
           )
           .timeout(_timeout);
@@ -374,6 +388,14 @@ class GroqAnalyzer implements IncidentAnalyzer {
   /// wrap it in fences or ramble ahead of it). Tracks string/escape state
   /// rather than brace-counting alone, which would misfire on a `}` inside a
   /// quoted string.
+  ///
+  /// The same state also decides where a raw control character is a bug. A
+  /// model filling code_before/code_after with real code writes real newlines
+  /// into the string value, which jsonDecode rejects outright — the very
+  /// feature that makes the ticket worth reading is the one that loses the
+  /// whole analysis. Escaping those is only safe from inside the walk: a
+  /// global replace would also eat the newlines between tokens and re-escape
+  /// the backslash of an already-correct `\n`.
   String? _extractJsonObject(String content) {
     final fenced = RegExp(r'```(?:json)?\s*([\s\S]*?)```').firstMatch(content);
     final text = fenced != null ? fenced.group(1)! : content;
@@ -384,27 +406,50 @@ class GroqAnalyzer implements IncidentAnalyzer {
     var depth = 0;
     var inString = false;
     var escaped = false;
+    final out = StringBuffer();
     for (var i = start; i < text.length; i++) {
       final ch = text[i];
       if (inString) {
         if (escaped) {
+          // Already a valid escape sequence's payload: copy it untouched.
           escaped = false;
         } else if (ch == '\\') {
           escaped = true;
         } else if (ch == '"') {
           inString = false;
+        } else if (ch.codeUnitAt(0) < 0x20) {
+          out.write(_jsonEscapeForControl(ch));
+          continue;
         }
+        out.write(ch);
         continue;
       }
+      out.write(ch);
       if (ch == '"') {
         inString = true;
       } else if (ch == '{') {
         depth++;
       } else if (ch == '}') {
         depth--;
-        if (depth == 0) return text.substring(start, i + 1);
+        if (depth == 0) return out.toString();
       }
     }
     return null;
+  }
+
+  /// `\uXXXX` is valid for every control character, but the named forms keep
+  /// the repaired text readable when a parse failure has to be diagnosed.
+  static const Map<int, String> _namedControlEscapes = {
+    0x08: r'\b',
+    0x09: r'\t',
+    0x0a: r'\n',
+    0x0c: r'\f',
+    0x0d: r'\r',
+  };
+
+  static String _jsonEscapeForControl(String ch) {
+    final code = ch.codeUnitAt(0);
+    return _namedControlEscapes[code] ??
+        '\\u${code.toRadixString(16).padLeft(4, '0')}';
   }
 }
