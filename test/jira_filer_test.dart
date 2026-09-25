@@ -28,6 +28,110 @@ Incident _incident({
     );
 
 void main() {
+  group('JiraFiler default assignee', () {
+    JiraFiler filerWith(MockClient client, {String? assignee, Log? log}) =>
+        JiraFiler(
+          apiRoot: 'https://api.atlassian.com/ex/jira/cloud-1/rest/api/3',
+          authHeader: _fakeAuthHeader,
+          projectKey: 'SCRUM',
+          issueTypeName: 'Bug',
+          siteBaseUrl: 'https://acme.atlassian.net',
+          assigneeAccountId: assignee,
+          client: client,
+          log: log ?? (_) {},
+        );
+
+    test('a new ticket is assigned after it is created, not in the create call',
+        () async {
+      final calls = <String>[];
+      Map<String, dynamic>? createFields;
+      Map<String, dynamic>? assignBody;
+      final client = MockClient((request) async {
+        calls.add('${request.method} ${request.url.path}');
+        if (request.url.path.endsWith('/issue')) {
+          createFields = (jsonDecode(request.body) as Map)['fields'];
+          return http.Response(jsonEncode({'key': 'SCRUM-50'}), 201);
+        }
+        assignBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response('', 204);
+      });
+
+      final ticket = await filerWith(client, assignee: 'acc-moin')
+          .file(_incident(), null, 'trace');
+
+      expect(ticket!.key, 'SCRUM-50');
+      // A rejected assignee in the create call would refuse the whole ticket.
+      expect(createFields!.containsKey('assignee'), isFalse);
+      expect(calls.last, endsWith('/issue/SCRUM-50/assignee'));
+      expect(calls.last, startsWith('PUT '));
+      expect(assignBody, {'accountId': 'acc-moin'});
+    });
+
+    test('a refused assignment still returns the ticket and logs why', () async {
+      final logs = <String>[];
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/issue')) {
+          return http.Response(jsonEncode({'key': 'SCRUM-51'}), 201);
+        }
+        return http.Response(
+            jsonEncode({'errorMessages': ['User cannot be assigned']}), 400);
+      });
+
+      final ticket = await filerWith(client, assignee: 'acc-moin', log: logs.add)
+          .file(_incident(), null, 'trace');
+
+      expect(ticket!.key, 'SCRUM-51');
+      expect(logs.join('\n'), contains('assign'));
+    });
+
+    test('a configured team is set on the new ticket, after creation',
+        () async {
+      Map<String, dynamic>? teamBody;
+      String? teamPath;
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/issue')) {
+          return http.Response(jsonEncode({'key': 'SCRUM-53'}), 201);
+        }
+        if (request.url.path.endsWith('/issue/SCRUM-53')) {
+          teamPath = '${request.method} ${request.url.path}';
+          teamBody = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return http.Response('', 204);
+      });
+      final filer = JiraFiler(
+        apiRoot: 'https://api.atlassian.com/ex/jira/cloud-1/rest/api/3',
+        authHeader: _fakeAuthHeader,
+        projectKey: 'SCRUM',
+        issueTypeName: 'Bug',
+        siteBaseUrl: 'https://acme.atlassian.net',
+        teamFieldId: 'customfield_10001',
+        teamId: 'team-uuid',
+        client: client,
+        log: (_) {},
+      );
+
+      final ticket = await filer.file(_incident(), null, 'trace');
+
+      expect(ticket!.key, 'SCRUM-53');
+      expect(teamPath, startsWith('PUT '));
+      expect(teamBody, {
+        'fields': {'customfield_10001': 'team-uuid'},
+      });
+    });
+
+    test('with no assignee configured, no assignment call is made', () async {
+      final calls = <String>[];
+      final client = MockClient((request) async {
+        calls.add(request.url.path);
+        return http.Response(jsonEncode({'key': 'SCRUM-52'}), 201);
+      });
+
+      await filerWith(client).file(_incident(), null, 'trace');
+
+      expect(calls.where((c) => c.endsWith('/assignee')), isEmpty);
+    });
+  });
+
   group('JiraFiler.file', () {
     test('successful create returns key and browse URL built from site URL',
         () async {

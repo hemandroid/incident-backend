@@ -27,6 +27,9 @@ class Config {
     required this.port,
     required this.symbolsDir,
     required this.sourceDir,
+    required this.jiraAssigneeAccountId,
+    required this.jiraTeamFieldId,
+    required this.jiraTeamId,
   });
 
   /// Kept separate from [Config.fromMap] so tests never mutate global
@@ -77,6 +80,15 @@ class Config {
 
     final authHeader = present('AI_AUTH_HEADER') ?? 'Authorization';
 
+    // One without the other would silently set nothing, so refuse to start.
+    final teamFieldId = present('JIRA_TEAM_FIELD_ID');
+    final teamId = present('JIRA_TEAM_ID');
+    if ((teamFieldId == null) != (teamId == null)) {
+      throw StateError(
+        'JIRA_TEAM_FIELD_ID and JIRA_TEAM_ID must be set together',
+      );
+    }
+
     return Config._(
       ingestAppToken: present('INGEST_APP_TOKEN')!,
       jiraApiBase: present('JIRA_API_BASE')!,
@@ -97,6 +109,9 @@ class Config {
       port: port,
       symbolsDir: present('SYMBOLS_DIR') ?? 'build/symbols',
       sourceDir: present('SOURCE_DIR'),
+      jiraAssigneeAccountId: present('JIRA_ASSIGNEE_ACCOUNT_ID'),
+      jiraTeamFieldId: teamFieldId,
+      jiraTeamId: teamId,
     );
   }
 
@@ -134,6 +149,15 @@ class Config {
   /// it a ticket's suggested fix stays prose instead of before/after code.
   final String? sourceDir;
 
+  /// Jira account id new tickets are assigned to. Optional: unset leaves them
+  /// unassigned, and it is an id, not a secret.
+  final String? jiraAssigneeAccountId;
+
+  /// The site's Team custom field id and the team to set on new tickets.
+  /// Optional, but only as a pair.
+  final String? jiraTeamFieldId;
+  final String? jiraTeamId;
+
   String get jiraApiRoot => '$jiraApiBase/$jiraCloudId/rest/api/3';
 
   /// Includes the `Basic` scheme on purpose: bare base64 makes Jira treat the
@@ -162,5 +186,7 @@ class Config {
       'aiAuthHeader: $aiAuthHeader, '
       'port: $port, '
       'symbolsDir: $symbolsDir, '
-      'sourceDir: ${sourceDir ?? 'unset'})';
+      'sourceDir: ${sourceDir ?? 'unset'}, '
+      'jiraAssigneeAccountId: ${jiraAssigneeAccountId ?? 'unset'}, '
+      'jiraTeamId: ${jiraTeamId ?? 'unset'})';
 }

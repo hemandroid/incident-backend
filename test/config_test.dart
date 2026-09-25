@@ -31,6 +31,27 @@ void main() {
       expect(config.aiModel, 'llama-3.3-70b');
     });
 
+    test('the default Jira assignee is optional', () {
+      expect(Config.fromMap(_validEnv()).jiraAssigneeAccountId, isNull);
+      final withAssignee = Config.fromMap(
+          {..._validEnv(), 'JIRA_ASSIGNEE_ACCOUNT_ID': ' acc-moin '});
+      expect(withAssignee.jiraAssigneeAccountId, 'acc-moin');
+    });
+
+    test('the team needs both its field id and its id, or neither', () {
+      final config = Config.fromMap({
+        ..._validEnv(),
+        'JIRA_TEAM_FIELD_ID': 'customfield_10001',
+        'JIRA_TEAM_ID': 'team-uuid',
+      });
+      expect(config.jiraTeamFieldId, 'customfield_10001');
+      expect(config.jiraTeamId, 'team-uuid');
+      expect(
+        () => Config.fromMap({..._validEnv(), 'JIRA_TEAM_ID': 'team-uuid'}),
+        throwsStateError,
+      );
+    });
+
     test('throws StateError naming every missing variable at once', () {
       final env = _validEnv()
         ..remove('JIRA_API_TOKEN')

@@ -19,6 +19,9 @@ class JiraFiler implements TicketFiler {
     required this.projectKey,
     required this.issueTypeName,
     required this.siteBaseUrl,
+    this.assigneeAccountId,
+    this.teamFieldId,
+    this.teamId,
     required http.Client client,
     required this.log,
   }) : _client = client;
@@ -32,6 +35,16 @@ class JiraFiler implements TicketFiler {
   final String projectKey;
   final String issueTypeName;
   final String siteBaseUrl;
+
+  /// Jira account id every new ticket is assigned to, or null for none.
+  /// An account id, not an email: Jira's API assigns by id only.
+  final String? assigneeAccountId;
+
+  /// The site's Team custom field (e.g. `customfield_10001`, which differs per
+  /// Jira site) and the team id to put in it. Both or neither.
+  final String? teamFieldId;
+  final String? teamId;
+
   final http.Client _client;
   final Log log;
 
@@ -83,6 +96,8 @@ class JiraFiler implements TicketFiler {
       // Attached after creation — Jira has no way to include a binary in the
       // create call — and never allowed to fail the ticket that already exists.
       await _attachScreenshot(key, incident);
+      await _assign(key);
+      await _setTeam(key);
 
       return Ticket(key: key, url: _browseUrl(key));
     } catch (e) {
@@ -123,6 +138,48 @@ class JiraFiler implements TicketFiler {
     } catch (e) {
       log('[JiraFiler] comment threw: ${e.runtimeType}');
       return null;
+    }
+  }
+
+  /// A separate call rather than an `assignee` field on create: Jira refuses
+  /// the WHOLE create when the assignee is not assignable in the project (no
+  /// project access yet, a mistyped id), and an unassigned ticket beats none.
+  Future<void> _assign(String issueKey) async {
+    final accountId = assigneeAccountId;
+    if (accountId == null) return;
+    try {
+      final response = await _client.put(
+        Uri.parse('$apiRoot/issue/$issueKey/assignee'),
+        headers: _headers,
+        body: jsonEncode({'accountId': accountId}),
+      );
+      if (response.statusCode != 204 && response.statusCode != 200) {
+        _logFailure('assign', response);
+      }
+    } catch (e) {
+      log('[JiraFiler] assign threw: ${e.runtimeType}');
+    }
+  }
+
+  /// After creation for the same reason as [_assign]: an unknown team id in
+  /// the create call would refuse the ticket itself.
+  Future<void> _setTeam(String issueKey) async {
+    final field = teamFieldId;
+    final team = teamId;
+    if (field == null || team == null) return;
+    try {
+      final response = await _client.put(
+        Uri.parse('$apiRoot/issue/$issueKey'),
+        headers: _headers,
+        body: jsonEncode({
+          'fields': {field: team},
+        }),
+      );
+      if (response.statusCode != 204 && response.statusCode != 200) {
+        _logFailure('set team', response);
+      }
+    } catch (e) {
+      log('[JiraFiler] set team threw: ${e.runtimeType}');
     }
   }
 

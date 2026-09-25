@@ -31,6 +31,12 @@ services:
         sync: false
       - key: JIRA_API_BASE
         value: https://api.atlassian.com/ex/jira
+      - key: JIRA_ASSIGNEE_ACCOUNT_ID
+        sync: false
+      - key: JIRA_TEAM_FIELD_ID
+        sync: false
+      - key: JIRA_TEAM_ID
+        sync: false
       - key: JIRA_ISSUE_TYPE
         value: Bug
       - key: SLACK_BOT_TOKEN
