@@ -1,12 +1,12 @@
 # incident-backend
 
 Takes a captured production Flutter crash, decodes its stack trace, has a model
-explain it, files a Jira Bug, and posts to Slack. Roughly four seconds from the
-crash to a ticket a developer can act on.
+explain it, files a Jira Bug, and posts to Slack. In our rehearsals the ticket a
+developer can act on arrived between 13 and 60 seconds after the crash.
 
 Built for the flutterCon India 2026 talk *Beyond Crashlytics: Building
 Autonomous Incident Intelligence for Flutter*. It is a small, readable service
-rather than a product: about 1,200 lines of Dart with no framework, so you can
+rather than a product: about 1,700 lines of Dart with no framework, so you can
 read the whole pipeline in one sitting and swap any stage for your own.
 
 ## What it does
@@ -63,7 +63,7 @@ dart run bin/server.dart
 `Authorization: Bearer $INGEST_APP_TOKEN`.
 
 ```bash
-dart test       # 134 tests, no network
+dart test       # 148 tests, no network
 dart analyze
 ```
 
@@ -122,7 +122,7 @@ bin/server.dart        composition root: the only file that knows which
                        concrete class stands behind each contract
 lib/src/contracts.dart every seam in one file
 lib/src/              symbolicator, fingerprint, dedupe, analyzer, Jira, Slack
-test/                 134 tests, all offline
+test/                 148 tests, all offline
 symbols/              per-commit Flutter debug info (see symbols/README.md)
 render.yaml           Render Blueprint
 ```
