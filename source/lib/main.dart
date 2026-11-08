@@ -132,9 +132,15 @@ void _routeToFailure() {
   if (_failureVisible) return;
   _failureVisible = true;
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    navigatorKey.currentState
-        ?.pushNamed('/failure')
-        .whenComplete(() => _failureVisible = false);
+    final navigator = navigatorKey.currentState;
+    // `?.` alone would short-circuit here with no navigator attached,
+    // `whenComplete` would never get chained on, and the flag would stay
+    // true forever — the crash screen would never be able to show again.
+    if (navigator == null) {
+      _failureVisible = false;
+      return;
+    }
+    navigator.pushNamed('/failure').whenComplete(() => _failureVisible = false);
   });
 }
 

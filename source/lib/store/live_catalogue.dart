@@ -63,7 +63,10 @@ class LiveCatalogue implements Catalogue {
     required this.client,
     required this.cacheDir,
     required this.faults,
-  });
+    void Function(Object error, StackTrace stack, String context)? reporter,
+  }) : reporter = reporter ??
+            ((error, stack, context) =>
+                IncidentSDK.report(error, stack, context: context));
 
   /// Expected to be the SDK's `IncidentHttpClient`, which is most of the
   /// point of fetching over HTTP at all: the incident then carries the real
@@ -75,6 +78,12 @@ class LiveCatalogue implements Catalogue {
   final Future<Directory> Function() cacheDir;
 
   final FaultSwitches faults;
+
+  /// Defaults to `IncidentSDK.report`, the same handled-report call
+  /// `catalogue.dart` uses for the empty catalogue. Overridable so a test can
+  /// see whether a degraded fetch reported itself without a live SDK.
+  final void Function(Object error, StackTrace stack, String context)
+      reporter;
 
   static const _origin = 'https://dummyjson.com';
 
@@ -89,6 +98,11 @@ class LiveCatalogue implements Catalogue {
   @override
   Future<List<Product>> fetch() async {
     final origin = faults.paymentApiDown ? _deadOrigin : _origin;
+    // Set whenever a category (or the fetch itself) fails, so a total outage
+    // can be reported once below with a real error and stack rather than
+    // just the warning log every individual failure already gets.
+    Object? lastError;
+    StackTrace? lastStack;
     try {
       // One request per category, all in flight together: a sequential loop
       // would make the first paint wait on five round trips.
@@ -100,7 +114,9 @@ class LiveCatalogue implements Catalogue {
       // to stale cache in front of an audience.
       final pages = await Future.wait([
         for (final slug in kLiveCategories)
-          _category(origin, slug).catchError((Object error) {
+          _category(origin, slug).catchError((Object error, StackTrace stack) {
+            lastError = error;
+            lastStack = stack;
             IncidentSDK.log(
               'catalogue: category $slug failed ($error)',
               level: LogLevel.warning,
@@ -115,11 +131,22 @@ class LiveCatalogue implements Catalogue {
         await _writeCache(products);
         return products;
       }
-    } catch (error) {
+    } catch (error, stack) {
+      lastError = error;
+      lastStack = stack;
       IncidentSDK.log(
         'catalogue: live fetch failed, downgrading ($error)',
         level: LogLevel.warning,
       );
+    }
+
+    // Every category failed (a partial failure already returned above), so
+    // this is the real outage the warning logs above cannot file a ticket
+    // for on their own. One report per degraded fetch, not per category: the
+    // failed requests themselves are already on the network collector's
+    // trail, this just ties them to an incident.
+    if (lastError != null) {
+      reporter(lastError!, lastStack!, 'catalogue: live fetch degraded');
     }
 
     final cached = await _readCache();

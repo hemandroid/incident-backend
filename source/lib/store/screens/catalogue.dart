@@ -17,7 +17,11 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
 
   Future<void> _reload() async {
     IncidentSDK.log('catalogue: reload requested');
-    setState(() => _products = api.catalogue());
+    // Block body, not `=>`: an arrow would return the assigned Future and
+    // setState rejects a callback that returns one.
+    setState(() {
+      _products = api.catalogue();
+    });
   }
 
   // The shell keeps every tab mounted in an IndexedStack, so "adding to cart"
