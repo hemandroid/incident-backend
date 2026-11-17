@@ -56,6 +56,23 @@ void main() {
     expect(notifier.sent.single.isRepeat, isTrue);
   });
 
+  test('a repeat whose ticket is gone files a new ticket and remembers it',
+      () async {
+    // The remembered ticket was deleted (board cleared before a demo):
+    // commenting fails, and the bug must not go unreported until a restart.
+    await dedupe.remember('fp-1', 'SCRUM-9');
+    filer.commentSucceeds = false;
+
+    await build().process(incident());
+
+    expect(filer.commented, ['SCRUM-9']);
+    expect(filer.filed, hasLength(1));
+    expect(dedupe.entries['fp-1'], 'SCRUM-1');
+    final sent = notifier.sent.single;
+    expect(sent.isRepeat, isFalse);
+    expect(sent.ticket?.key, 'SCRUM-1');
+  });
+
   test('failed analysis still produces a ticket', () async {
     analyzer.result = null;
 

@@ -72,15 +72,21 @@ class IncidentPipeline {
         fallback: null,
         what: 'jira comment',
       );
-      await _announce(
-        incident: incident,
-        analysis: null,
-        ticket: commented,
-        isRepeat: true,
-        failureNote:
-            commented == null ? 'Could not comment on $existing.' : null,
-      );
-      return;
+      if (commented != null) {
+        await _announce(
+          incident: incident,
+          analysis: null,
+          ticket: commented,
+          isRepeat: true,
+        );
+        return;
+      }
+      // The remembered ticket can't take a comment, usually because it was
+      // deleted. Fall through and file a fresh one, which replaces the stale
+      // mapping; otherwise this bug stays unreported until a restart.
+      // ponytail: a transient Jira error here can open a duplicate ticket;
+      // tell 404 from 5xx in comment() if that ever shows up.
+      log('comment on $existing failed; filing a new ticket');
     }
 
     final analysis = await _guard<Analysis?>(
