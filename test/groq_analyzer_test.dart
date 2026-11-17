@@ -628,6 +628,17 @@ void main() {
       expect(result.codeAfter, 'final o = orders.where(\n  (x) => x.id == id,\n).firstOrNull;');
     });
 
+    test('the model runs at temperature 0 so one crash gets one analysis', () async {
+      Map<String, dynamic>? body;
+      final client = MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return _chatResponse(_validJson);
+      });
+      await _analyzer(client).analyse(_incident(), 'trace');
+
+      expect(body!['temperature'], 0);
+    });
+
     test('acceptance criteria are asked for and parsed as a list', () async {
       String? prompt;
       final client = MockClient((request) async {

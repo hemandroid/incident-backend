@@ -92,6 +92,9 @@ class GroqAnalyzer implements IncidentAnalyzer {
                 {'role': 'user', 'content': _buildPrompt(incident, symbolicatedTrace)},
               ],
               'max_tokens': _outputTokenCap,
+              // Deterministic: at the default (~1.0) the same crash sometimes
+              // came back with the before/after fix and sometimes without it.
+              'temperature': 0,
             }),
           )
           .timeout(_timeout);
