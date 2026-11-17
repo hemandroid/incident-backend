@@ -628,6 +628,29 @@ void main() {
       expect(result.codeAfter, 'final o = orders.where(\n  (x) => x.id == id,\n).firstOrNull;');
     });
 
+    test('acceptance criteria are asked for and parsed as a list', () async {
+      String? prompt;
+      final client = MockClient((request) async {
+        prompt = request.body;
+        return _chatResponse(jsonEncode({
+          'title': 'Checkout crashes when the session expires',
+          'root_cause': ['payment is null after expiry'],
+          'acceptance_criteria': [
+            'Given an expired session, when Pay is tapped, then no crash',
+            '  ',
+            'The user sees a "session expired" message',
+          ],
+        }));
+      });
+      final result = await _analyzer(client).analyse(_incident(), 'trace');
+
+      expect(prompt, contains('acceptance_criteria'));
+      expect(result!.acceptanceCriteria, [
+        'Given an expired session, when Pay is tapped, then no crash',
+        'The user sees a "session expired" message',
+      ]);
+    });
+
     test('a raw tab inside a string survives as a tab, not as backslash-t', () async {
       final client = MockClient(
         (request) async => _chatResponse(

@@ -74,6 +74,7 @@ class Analysis {
     this.suggestedFix,
     this.codeBefore,
     this.codeAfter,
+    this.acceptanceCriteria = const [],
   });
 
   /// Never contains the raw stack trace.
@@ -93,6 +94,10 @@ class Analysis {
   /// together or not at all, since one half of a diff says nothing.
   final String? codeBefore;
   final String? codeAfter;
+
+  /// Testable statements that hold once the bug is fixed — what a reviewer
+  /// checks the fix against. Empty when the model gave none.
+  final List<String> acceptanceCriteria;
 }
 
 class Ticket {

@@ -191,7 +191,11 @@ class GroqAnalyzer implements IncidentAnalyzer {
         'invent steps it does not support',
       )
       ..writeln('  "severity": one of "blocker", "major", "minor"')
-      ..writeln('  "suggested_fix": a concrete suggestion for what to change');
+      ..writeln('  "suggested_fix": a concrete suggestion for what to change')
+      ..writeln(
+        '  "acceptance_criteria": an array of 2 or 3 short, testable '
+        'statements that must hold once the bug is fixed, each one line',
+      );
 
     if (excerpt != null) {
       buffer
@@ -363,6 +367,15 @@ class GroqAnalyzer implements IncidentAnalyzer {
     final after = _codeString(decoded, ['code_after', 'codeAfter']);
     final bothSides = before != null && after != null;
 
+    final criteriaRaw =
+        _pick(decoded, ['acceptance_criteria', 'acceptanceCriteria']);
+    final acceptanceCriteria = criteriaRaw is List
+        ? criteriaRaw
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList()
+        : <String>[];
+
     return Analysis(
       title: title,
       rootCause: rootCause,
@@ -371,6 +384,7 @@ class GroqAnalyzer implements IncidentAnalyzer {
       suggestedFix: suggestedFix is String ? suggestedFix : null,
       codeBefore: bothSides ? before : null,
       codeAfter: bothSides ? after : null,
+      acceptanceCriteria: acceptanceCriteria,
     );
   }
 

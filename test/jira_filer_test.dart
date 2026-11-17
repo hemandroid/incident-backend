@@ -463,6 +463,53 @@ void main() {
       expect(asText, contains('Handle multiple matches gracefully.'));
     });
 
+    test('acceptance criteria and the app log render as their own sections',
+        () async {
+      Map<String, dynamic>? sentBody;
+      final client = MockClient((request) async {
+        sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(jsonEncode({'key': 'SCRUM-13'}), 201);
+      });
+      final filer = JiraFiler(
+        apiRoot: 'https://api.atlassian.com/ex/jira/cloud-1/rest/api/3',
+        authHeader: _fakeAuthHeader,
+        projectKey: 'SCRUM',
+        issueTypeName: 'Bug',
+        siteBaseUrl: 'https://acme.atlassian.net',
+        client: client,
+        log: (_) {},
+      );
+      const analysis = Analysis(
+        title: 'Checkout crashes when the session expires',
+        rootCause: ['payment is null after expiry'],
+        reproSteps: ['Open /checkout', 'Tap Pay'],
+        acceptanceCriteria: ['Given an expired session, when Pay is tapped, then no crash'],
+      );
+      final incident = _incident(context: {
+        'logs': {
+          'entries': [
+            {'level': 'info', 'message': 'checkout: pay tapped', 'at': '2026-11-17T17:10:01.123Z'},
+            {'level': 'error', 'message': 'payment: null response', 'at': '2026-11-17T17:10:01.456Z'},
+          ],
+        },
+      });
+
+      await filer.file(incident, analysis, 'trace');
+
+      final content = ((sentBody!['fields']
+          as Map<String, dynamic>)['description'] as Map)['content'] as List;
+      final headings = content
+          .where((c) => c['type'] == 'heading')
+          .map((c) => c['content'][0]['text'])
+          .toList();
+      expect(headings, containsAllInOrder(
+          ['Root cause', 'Reproduction steps', 'Acceptance criteria', 'Logcat (app log)', 'Stack trace']));
+      final asText = jsonEncode(content);
+      expect(asText, contains('then no crash'));
+      expect(asText, contains('I/Nimbus: checkout: pay tapped'));
+      expect(asText, contains('E/Nimbus: payment: null response'));
+    });
+
     test('without a before/after pair the suggested fix stays prose', () async {
       Map<String, dynamic>? sentBody;
       final client = MockClient((request) async {

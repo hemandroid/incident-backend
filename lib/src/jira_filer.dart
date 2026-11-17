@@ -304,6 +304,10 @@ class JiraFiler implements TicketFiler {
         content.add(_heading('Reproduction steps'));
         content.add(_orderedList(analysis.reproSteps));
       }
+      if (analysis.acceptanceCriteria.isNotEmpty) {
+        content.add(_heading('Acceptance criteria'));
+        content.add(_bulletList(analysis.acceptanceCriteria));
+      }
       // Both sides or neither: `Analysis` never carries one without the other.
       final hasDiff = analysis.codeBefore != null && analysis.codeAfter != null;
       if (analysis.suggestedFix != null || hasDiff) {
@@ -325,6 +329,12 @@ class JiraFiler implements TicketFiler {
       ));
     }
 
+    final logcat = _logcatLines(incident);
+    if (logcat.isNotEmpty) {
+      content.add(_heading('Logcat (app log)'));
+      content.add(_codeBlock(logcat.join('\n')));
+    }
+
     content.add(_heading('Context'));
     content.add(_bulletList(_contextLines(incident)));
 
@@ -332,6 +342,35 @@ class JiraFiler implements TicketFiler {
     content.add(_codeBlock(_truncateTrace(trace)));
 
     return {'type': 'doc', 'version': 1, 'content': content};
+  }
+
+  /// The SDK's log ring as logcat-style lines (`12:30:01.123 E/Nimbus: …`),
+  /// newest last and capped, so a developer reads what the app said just
+  /// before it failed. These are the app's own log lines, not system logcat.
+  List<String> _logcatLines(Incident incident) {
+    const maxLines = 20;
+    final entries = recentEntries(incident.context['logs']);
+    final tail = entries.length > maxLines
+        ? entries.sublist(entries.length - maxLines)
+        : entries;
+    return [
+      for (final e in tail)
+        if (e is Map)
+          '${_clock(e['at'])} '
+              '${(e['level']?.toString() ?? 'i').substring(0, 1).toUpperCase()}'
+              '/Nimbus: ${e['message']}'
+        else
+          e.toString(),
+    ];
+  }
+
+  /// `HH:MM:SS.mmm` from an ISO timestamp, or the raw value if it isn't one.
+  String _clock(Object? at) {
+    final t = DateTime.tryParse(at?.toString() ?? '');
+    if (t == null) return at?.toString() ?? '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}.'
+        '${t.millisecond.toString().padLeft(3, '0')}';
   }
 
   /// Pulls known fields out of [Incident.context] rather than serialising
