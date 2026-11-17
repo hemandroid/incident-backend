@@ -100,6 +100,10 @@ class SlackNotifier implements Notifier {
       if (analysis != null)
         // Joined rather than bulleted — Block Kit sections read as one line.
         '*Root cause:* ${_mrkdwn(analysis.rootCause.join(' · '))}'
+      else if (isRepeat)
+        // Repeats skip the model by design; saying the analysis "did not
+        // complete" read as a failure on every recurrence.
+        '_Same bug as the existing ticket. Root cause and fix are on it._'
       else
         '_Automated analysis did not complete for this incident._',
       '*Version:* ${_mrkdwn(incident.appVersion)}   '

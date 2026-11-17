@@ -256,6 +256,29 @@ void main() {
     }
   });
 
+  test('a recurrence does not claim the analysis failed: repeats skip the model', () async {
+    final h = _harness();
+    final notifier = SlackNotifier(
+      botToken: _botToken,
+      channelId: 'C123',
+      dmUserId: 'U456',
+      client: h.client,
+    );
+
+    await notifier.announce(
+      incident: _incident(),
+      analysis: null,
+      ticket: _ticket,
+      isRepeat: true,
+    );
+
+    for (final request in h.requests) {
+      final rendered = jsonEncode(jsonDecode(request.body));
+      expect(rendered, isNot(contains('did not complete')));
+      expect(rendered, contains('existing ticket'));
+    }
+  });
+
   test('missing analysis still produces a message, without inventing a root cause', () async {
     final h = _harness();
     final notifier = SlackNotifier(

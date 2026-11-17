@@ -157,6 +157,11 @@ class NimbusApp extends StatelessWidget {
         navigatorKey: navigatorKey,
         navigatorObservers: [routeHistory],
         theme: buildNimbusTheme(),
+        // Android 12+ defaults to the stretch overscroll, which warps the whole
+        // list when it is pulled past the top or bottom. On stage that reads
+        // as the app breaking, so lists stop flat at their edges instead.
+        scrollBehavior:
+            const MaterialScrollBehavior().copyWith(overscroll: false),
         // Defaults to 1.0 so the app looks like a shipped product; 1.35 made
         // every screen read as though an accessibility setting were stuck on,
         // which undermines the "this is production" premise. Raise it per

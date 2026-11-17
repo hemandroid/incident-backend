@@ -28,6 +28,18 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
   // is a tab switch, not a route push.
   void _goToCart() => shellTab.value = 1;
 
+  /// The load whose empty result was already reported. This tab stays mounted
+  /// offstage, so the keyboard on Checkout, a tab switch or the crash screen
+  /// all rebuild the banner; reporting from build() filed a "recurrence" on
+  /// every one of those. One report per load, so a Reload still reports.
+  Future<List<Product>>? _reportedEmpty;
+
+  void _reportEmpty(Object error, StackTrace stack) {
+    if (identical(_reportedEmpty, _products)) return;
+    _reportedEmpty = _products;
+    IncidentSDK.report(error, stack, context: 'catalogue: empty page');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -67,7 +79,11 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
               // The banner assumes the catalogue is never empty. When the API
               // returns [] this throws, and the SDK reports it as a handled
               // failure rather than a crash.
-              _FeaturedBanner(products: products, onAddToCart: _goToCart),
+              _FeaturedBanner(
+                products: products,
+                onAddToCart: _goToCart,
+                onEmpty: _reportEmpty,
+              ),
               const SizedBox(height: 20),
               // Both sides flex: the design was drawn 780px wide, the device is
               // ~411dp, and every label is multiplied by the 1.35x projector
@@ -118,9 +134,14 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
 }
 
 class _FeaturedBanner extends StatelessWidget {
-  const _FeaturedBanner({required this.products, required this.onAddToCart});
+  const _FeaturedBanner({
+    required this.products,
+    required this.onAddToCart,
+    required this.onEmpty,
+  });
   final List<Product> products;
   final VoidCallback onAddToCart;
+  final void Function(Object error, StackTrace stack) onEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +149,7 @@ class _FeaturedBanner extends StatelessWidget {
     try {
       featured = products.first;
     } catch (error, stack) {
-      IncidentSDK.report(error, stack, context: 'catalogue: empty page');
+      onEmpty(error, stack);
       return Card(
         color: NimbusTokens.surfaceContainer,
         child: Padding(

@@ -123,6 +123,10 @@ ThemeData buildNimbusTheme() {
       backgroundColor: NimbusTokens.surfaceCard,
       foregroundColor: NimbusTokens.primary,
       elevation: 0,
+      // Material 3 tints the bar with the navy primary once content scrolls
+      // under it; on the dark Chaos panel that flickers the bar's colour.
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
       centerTitle: false,
       titleTextStyle: TextStyle(
         fontFamily: _fontFamily,
